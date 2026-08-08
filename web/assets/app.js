@@ -1,5 +1,7 @@
 "use strict";
 
+var V = "3";
+
 if (!localStorage.getItem("ecom_auth")) {
   location.replace("login.html");
 }
@@ -90,7 +92,7 @@ function switchMarket(code) {
 }
 
 function loadMarket() {
-  fetch("data/" + state.market + ".json")
+  fetch("data/" + state.market + ".json?v=" + V)
     .then(function (r) { return r.json(); })
     .then(function (d) {
       state.data = d;
@@ -361,7 +363,7 @@ function bindCategoryRows() {
 }
 
 function init() {
-  fetch("data/meta.json")
+  fetch("data/meta.json?v=" + V)
     .then(function (r) { return r.json(); })
     .then(function (meta) {
       state.meta = meta;
