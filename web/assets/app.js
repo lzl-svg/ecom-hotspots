@@ -11,6 +11,7 @@ var state = {
   view: "overview",
   detail: null, // { name, dates, series, hot_keywords }
   range: "30d",
+  kwFilter: null,
   chart: null
 };
 
@@ -26,6 +27,16 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, function (c) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
   });
+}
+function catNameHtml(c) {
+  return c.cn
+    ? '<span class="cat-name">' + esc(c.cn) + '</span><span class="cat-local">' + esc(c.name) + '</span>'
+    : '<span class="cat-name">' + esc(c.name) + '</span>';
+}
+function kwNameHtml(k) {
+  return k.cn
+    ? '<span class="kw-name">' + esc(k.cn) + '<small>' + esc(k.keyword) + '</small></span>'
+    : '<span class="kw-name">' + esc(k.keyword) + '</span>';
 }
 function pct(delta, base) {
   if (base > 0) {
@@ -73,6 +84,7 @@ function renderMarkets() {
 function switchMarket(code) {
   state.market = code;
   state.detail = null;
+  state.kwFilter = null;
   renderMarkets();
   loadMarket();
 }
@@ -132,7 +144,7 @@ function renderOverview(content) {
 
   var rows = top.map(function (c) {
     return "<tr class=\"cat-row\" data-catid=\"" + c.catid + "\">" +
-      "<td><span class=\"cat-name\">" + esc(c.name) + "</span></td>" +
+      "<td>" + catNameHtml(c) + "</td>" +
       "<td class=\"score\">" + c.heat.toFixed(2) + "</td>" +
       "<td style=\"text-align:right\">" + chip(c.delta, c.heat - c.delta) + "</td></tr>";
   }).join("");
@@ -143,7 +155,7 @@ function renderOverview(content) {
     '<section class="panel"><div class="panel-head"><div><div class="panel-title">热搜词 TOP 10</div><div class="panel-sub">搜索联想词热度</div></div></div>' +
     kws.map(function (k, i) {
       return '<div class="kw-row"><span class="kw-rank">' + (i + 1) + '</span>' +
-        '<span class="kw-name">' + esc(k.keyword) + '</span>' +
+        kwNameHtml(k) +
         '<span class="kw-heat">' + k.heat.toFixed(2) + '</span>' +
         chip(k.delta, k.heat - k.delta) + "</div>";
     }).join("") + "</section></div>";
@@ -154,23 +166,49 @@ function renderOverview(content) {
 function renderCategories(content) {
   var d = state.data;
   var html = statusBar();
-  html += '<section class="panel"><div class="panel-head"><div><div class="panel-title">类目热点榜</div><div class="panel-sub">热度分 = 搜索联想词热度加权 · 点击类目展开子类目，点子类目看详情</div></div></div>' +
+  html += '<div class="grid-2"><section class="panel"><div class="panel-head"><div><div class="panel-title">类目热点榜</div><div class="panel-sub">热度分 = 搜索联想词热度加权 · 点击类目展开子类目，点子类目看详情</div></div></div>' +
     '<table><thead><tr><th style="width:46%">类目</th><th class="score">热度分</th><th style="text-align:right">今日变化</th><th style="width:28px"></th></tr></thead><tbody>';
   d.categories.forEach(function (c, i) {
     html += '<tr class="cat-row" data-i="' + i + '">' +
-      "<td><span class=\"cat-name\">" + esc(c.name) + "</span></td>" +
+      "<td>" + catNameHtml(c) + "</td>" +
       "<td class=\"score\">" + c.heat.toFixed(2) + "</td>" +
       "<td style=\"text-align:right\">" + chip(c.delta, c.heat - c.delta) + "</td>" +
       '<td style="text-align:right;color:#c0bec2">▾</td></tr>';
     c.subs.forEach(function (s, j) {
       html += '<tr class="sub-row" data-cat="' + i + '" data-j="' + j + '" hidden>' +
-        "<td style=\"padding-left:26px\">" + esc(s.name) + "</td>" +
+        '<td style="padding-left:26px">' + catNameHtml(s) + "</td>" +
         "<td class=\"score\">" + (s.heat > 0 ? s.heat.toFixed(2) : "—") + "</td>" +
         '<td style="text-align:right">' + (s.heat > 0 ? chip(s.delta, s.heat - s.delta) : '<span class="chip flat">未跟踪</span>') + "</td>" +
         "<td></td></tr>";
     });
   });
   html += "</tbody></table></section>";
+
+  // 右栏：飙升子类目 + 热搜词速览
+  var rising = [];
+  d.categories.forEach(function (c, ci) {
+    c.subs.forEach(function (s, si) {
+      if (s.heat > 0 && s.delta > 0.000001) {
+        rising.push({ ci: ci, si: si, delta: s.delta, name: s.name, cn: s.cn });
+      }
+    });
+  });
+  rising.sort(function (a, b) { return b.delta - a.delta; });
+  var risingHtml = rising.slice(0, 8).map(function (r) {
+    return '<div class="kw-row rising-row" data-ci="' + r.ci + '" data-si="' + r.si + '" title="点击查看详情">' +
+      '<span class="kw-name">' + (r.cn ? esc(r.cn) + "<small>" + esc(r.name) + "</small>" : esc(r.name)) + "</span>" +
+      '<span class="chip up">▲ ' + r.delta.toFixed(2) + "</span></div>";
+  }).join("") || '<div class="empty">暂无，数据积累几天后自动出现</div>';
+
+  var kws = d.keywords.slice(0, 8).map(function (k, i) {
+    return '<div class="kw-row"><span class="kw-rank">' + (i + 1) + '</span>' +
+      kwNameHtml(k) + '<span class="kw-heat">' + k.heat.toFixed(2) + "</span>" +
+      chip(k.delta, k.heat - k.delta) + "</div>";
+  }).join("");
+  html += '<div class="right-col">' +
+    '<section class="panel"><div class="panel-head"><div><div class="panel-title">飙升子类目</div><div class="panel-sub">今日涨幅最高，点击查看曲线</div></div></div>' + risingHtml + "</section>" +
+    '<section class="panel"><div class="panel-head"><div><div class="panel-title">热搜词速览</div></div><button class="text-link" id="goto-kw" type="button">查看全部 →</button></div>' +
+    (kws || '<div class="empty">暂无</div>') + "</section></div></div>";
   content.innerHTML = html;
 
   var table = content.querySelector("table");
@@ -186,19 +224,30 @@ function renderCategories(content) {
     } else if (tr.classList.contains("sub-row")) {
       var ci = Number(tr.getAttribute("data-cat"));
       var si = Number(tr.getAttribute("data-j"));
-      var cat = state.data.categories[ci];
-      var sub = cat.subs[si];
-      state.detail = {
-        name: cat.name + " › " + sub.name,
-        dates: sub.dates,
-        series: sub.series,
-        hot_keywords: sub.hot_keywords,
-        heat: sub.heat,
-        delta: sub.delta
-      };
-      render();
+      openSub(ci, si);
     }
   });
+  content.querySelectorAll(".rising-row").forEach(function (row) {
+    row.addEventListener("click", function () {
+      openSub(Number(row.getAttribute("data-ci")), Number(row.getAttribute("data-si")));
+    });
+  });
+  var gotoKw = document.getElementById("goto-kw");
+  if (gotoKw) gotoKw.addEventListener("click", function () { setView("keywords"); });
+}
+
+function openSub(ci, si) {
+  var cat = state.data.categories[ci];
+  var sub = cat.subs[si];
+  state.detail = {
+    name: (cat.cn ? cat.cn : cat.name) + " › " + (sub.cn ? sub.cn : sub.name),
+    dates: sub.dates,
+    series: sub.series,
+    hot_keywords: sub.hot_keywords,
+    heat: sub.heat,
+    delta: sub.delta
+  };
+  render();
 }
 
 function renderDetail() {
@@ -261,15 +310,33 @@ function renderChart() {
 function renderKeywords(content) {
   var d = state.data;
   var html = statusBar();
-  html += '<section class="panel"><div class="panel-head"><div><div class="panel-title">热搜词榜</div><div class="panel-sub">按今日搜索联想词热度排序，反映买家真实搜索需求</div></div></div>';
-  d.keywords.forEach(function (k, i) {
+  var chips = ['<button type="button" class="chip-cat' + (!state.kwFilter ? " active" : "") + '" data-cat="">全部</button>'];
+  d.categories.forEach(function (c) {
+    chips.push('<button type="button" class="chip-cat' + (state.kwFilter === c.name ? " active" : "") + '" data-cat="' + esc(c.name) + '">' +
+      (c.cn ? esc(c.cn) : esc(c.name)) + "</button>");
+  });
+  var list = state.kwFilter
+    ? d.keywords.filter(function (k) { return (k.cats || []).indexOf(state.kwFilter) >= 0; })
+    : d.keywords;
+  html += '<section class="panel"><div class="panel-head"><div><div class="panel-title">热搜词榜</div><div class="panel-sub">按今日搜索联想词热度排序 · 点击类目筛选</div></div></div>';
+  html += '<div class="chip-cat-row">' + chips.join("") + "</div>";
+  if (list.length === 0) {
+    html += '<div class="empty">该类目暂无热搜词数据，明天更新后会出现</div>';
+  }
+  list.forEach(function (k, i) {
     html += '<div class="kw-row"><span class="kw-rank">' + (i + 1) + '</span>' +
-      '<span class="kw-name">' + esc(k.keyword) + '</span>' +
+      kwNameHtml(k) +
       '<span class="kw-heat">' + k.heat.toFixed(2) + '</span>' +
       chip(k.delta, k.heat - k.delta) + "</div>";
   });
   html += "</section>";
   content.innerHTML = html;
+  content.querySelectorAll(".chip-cat").forEach(function (b) {
+    b.addEventListener("click", function () {
+      state.kwFilter = b.getAttribute("data-cat") || null;
+      render();
+    });
+  });
 }
 
 function renderStatus(content) {
@@ -312,6 +379,20 @@ function init() {
     logoutBtn.addEventListener("click", function () {
       localStorage.removeItem("ecom_auth");
       location.href = "login.html";
+    });
+  }
+
+  var settingsBtn = document.getElementById("settings-btn");
+  var settingsMenu = document.getElementById("settings-menu");
+  if (settingsBtn && settingsMenu) {
+    settingsBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      settingsMenu.hidden = !settingsMenu.hidden;
+    });
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest("#settings-menu") && !e.target.closest("#settings-btn")) {
+        settingsMenu.hidden = true;
+      }
     });
   }
 

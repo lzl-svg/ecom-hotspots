@@ -1,6 +1,8 @@
 name: 每日数据更新
 
 on:
+  push:
+    branches: [main]
   schedule:
     # 每天 08:00 北京时间（00:00 UTC）
     - cron: "0 0 * * *"

@@ -9,9 +9,11 @@ from db import (
     category_series,
     connect,
     daily_dates,
+    keyword_seed_rows,
     keyword_heat_by_date,
     seed_keywords,
 )
+from translations import CAT_CN, KW_CN
 
 CST = timezone(timedelta(hours=8))
 
@@ -26,6 +28,24 @@ def export_market(conn, market: str, dates: list[str]) -> dict:
     today = dates[0] if dates else ""
     prev = dates[1] if len(dates) > 1 else ""
     asc = list(reversed(dates))
+
+    # 种子词 -> 所属一级类目（用于热搜词按类目筛选）
+    cats_by_id = {c["catid"]: c for c in cats}
+    seed_roots = {}
+    for c in cats:
+        node = c
+        seen = set()
+        while node and node["parent_catid"] not in (0, None) and node["catid"] not in seen:
+            seen.add(node["catid"])
+            node = cats_by_id.get(node["parent_catid"])
+        root = node["display_name"] if node else None
+        if root:
+            seed_roots.setdefault(c["display_name"], set()).add(root)
+    kw_seeds = {}
+    if today:
+        for kw, seed in keyword_seed_rows(conn, market, today):
+            kw_seeds.setdefault(kw, set()).add(seed)
+
     kw_today = {k["keyword"]: k["heat"] for k in keyword_heat_by_date(conn, market, today)} if today else {}
     kw_prev = {k["keyword"]: k["heat"] for k in keyword_heat_by_date(conn, market, prev)} if prev else {}
 
@@ -38,6 +58,7 @@ def export_market(conn, market: str, dates: list[str]) -> dict:
             subs.append({
                 "catid": s["catid"],
                 "name": s["display_name"],
+                "cn": CAT_CN.get(market, {}).get(s["display_name"], ""),
                 "heat": round(s_series_desc[0], 3) if s_series_desc else 0,
                 "delta": round(s_series_desc[0] - s_series_desc[1], 3) if len(s_series_desc) > 1 else 0,
                 "dates": asc,
@@ -47,6 +68,7 @@ def export_market(conn, market: str, dates: list[str]) -> dict:
         roots.append({
             "catid": c["catid"],
             "name": c["display_name"],
+            "cn": CAT_CN.get(market, {}).get(c["display_name"], ""),
             "heat": round(series_desc[0], 3) if series_desc else 0,
             "delta": round(series_desc[0] - series_desc[1], 3) if len(series_desc) > 1 else 0,
             "dates": asc,
@@ -59,10 +81,15 @@ def export_market(conn, market: str, dates: list[str]) -> dict:
     keywords = []
     for k in keyword_heat_by_date(conn, market, today, limit=100) if today else []:
         prev_h = kw_prev.get(k["keyword"], 0)
+        cat_set = set()
+        for s in kw_seeds.get(k["keyword"], set()):
+            cat_set |= seed_roots.get(s, set())
         keywords.append({
             "keyword": k["keyword"],
+            "cn": KW_CN.get(market, {}).get(k["keyword"], ""),
             "heat": k["heat"],
             "delta": round(k["heat"] - prev_h, 3),
+            "cats": sorted(cat_set),
         })
 
     return {

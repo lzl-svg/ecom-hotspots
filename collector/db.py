@@ -144,3 +144,11 @@ def seed_keywords(conn: sqlite3.Connection, market: str, date: str, seed: str, l
         (market, date, seed, limit),
     )
     return [{"keyword": r[0], "heat": round(r[1], 3)} for r in cur.fetchall()]
+
+
+def keyword_seed_rows(conn: sqlite3.Connection, market: str, date: str) -> list[tuple]:
+    cur = conn.execute(
+        "SELECT keyword, seed FROM keyword_daily WHERE market=? AND date=?",
+        (market, date),
+    )
+    return cur.fetchall()
