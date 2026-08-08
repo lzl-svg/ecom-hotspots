@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>电商热点台 · 访问验证</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <style>
+    .login-wrap {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: #faf6f7; padding: 20px;
+    }
+    .login-card {
+      width: 360px; max-width: 100%; background: #ffffff;
+      border: 1px solid #e5e2e4; border-radius: 14px; padding: 32px 28px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.05);
+    }
+    .login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .login-title { font-size: 17px; font-weight: 600; }
+    .login-sub { font-size: 12.5px; color: #909097; margin-top: 2px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 12.5px; color: #56565e; margin-bottom: 6px; }
+    .field input {
+      width: 100%; padding: 10px 12px; border: 1px solid #e5e2e4; border-radius: 9px;
+      font-size: 14px; font-family: inherit; color: #1d1d21; background: #ffffff;
+    }
+    .field input:focus { outline: 2px solid rgba(16,163,127,.35); border-color: #10a37f; }
+    .login-btn {
+      width: 100%; padding: 10px 0; border: 0; border-radius: 9px; cursor: pointer;
+      background: #10a37f; color: #ffffff; font-size: 14px; font-weight: 600; font-family: inherit;
+    }
+    .login-btn:hover { background: #0d8f6f; }
+    .login-err { color: #e0434a; font-size: 12.5px; min-height: 18px; margin: 8px 0 0; }
+    .login-note { font-size: 11.5px; color: #b4b2b8; margin-top: 16px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="brand-mark">✦</div>
+        <div>
+          <div class="login-title">电商热点台</div>
+          <div class="login-sub">Shopee 情报中心 · 私人访问</div>
+        </div>
+      </div>
+      <form id="login-form" autocomplete="off">
+        <div class="field">
+          <label for="password">访问口令</label>
+          <input type="password" id="password" placeholder="请输入口令" required>
+        </div>
+        <button type="submit" class="login-btn">进入</button>
+        <p class="login-err" id="error" role="alert"></p>
+      </form>
+      <div class="login-note">仅限授权访问，请妥善保管口令</div>
+    </div>
+  </div>
+  <script src="assets/config.js"></script>
+  <script>
+    async function sha256(text) {
+      var data = new TextEncoder().encode(text);
+      var digest = await crypto.subtle.digest("SHA-256", data);
+      return Array.from(new Uint8Array(digest))
+        .map(function (b) { return b.toString(16).padStart(2, "0"); })
+        .join("");
+    }
+    (function () {
+      var form = document.getElementById("login-form");
+      var input = document.getElementById("password");
+      var err = document.getElementById("error");
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        err.textContent = "";
+        sha256(input.value).then(function (h) {
+          if (h === window.ECO_AUTH.hash) {
+            localStorage.setItem("ecom_auth", "1");
+            location.href = "index.html";
+          } else {
+            err.textContent = "口令不正确，请重试";
+            input.select();
+          }
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

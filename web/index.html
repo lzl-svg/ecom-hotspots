@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>电商热点台 · Shopee 情报中心</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">✦</div>
+        <div>
+          <div class="brand-name">电商热点台</div>
+          <div class="brand-sub">Shopee 情报中心</div>
+        </div>
+      </div>
+      <button class="nav-item active" type="button" data-view="overview">总览</button>
+      <button class="nav-item" type="button" data-view="categories">类目热点</button>
+      <button class="nav-item" type="button" data-view="keywords">热搜词</button>
+      <button class="nav-item" type="button" data-view="status">数据状态</button>
+      <button class="nav-item" id="logout-btn" type="button">退出访问</button>
+      <div class="sidebar-foot" id="side-status">正在加载…</div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="page-title" id="page-title">总览</div>
+        <div class="topbar-right">
+          <div class="seg" role="group" aria-label="平台选择">
+            <button type="button" class="active" aria-pressed="true">Shopee</button>
+            <button type="button" class="soon" disabled>Amazon</button>
+            <button type="button" class="soon" disabled>Ozon</button>
+            <button type="button" class="soon" disabled>WB</button>
+          </div>
+          <div class="seg" id="market-seg" role="group" aria-label="市场选择"></div>
+        </div>
+      </header>
+      <div class="content" id="content"></div>
+    </div>
+  </div>
+  <script src="assets/echarts.min.js"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
