@@ -168,7 +168,7 @@ function renderOverview(content) {
 function renderCategories(content) {
   var d = state.data;
   var html = statusBar();
-  html += '<div class="grid-2"><section class="panel"><div class="panel-head"><div><div class="panel-title">类目热点榜</div><div class="panel-sub">热度分 = 搜索联想词热度加权 · 点击类目展开子类目，点子类目看详情</div></div></div>' +
+  html += '<div class="grid-2"><section class="panel"><div class="panel-head"><div><div class="panel-title">类目热点榜</div><div class="panel-sub">热度分 = 搜索联想词热度加权 · 点母目录展开/收回子类目 · 子类目右侧点“查看”看详情</div></div></div>' +
     '<table><thead><tr><th style="width:46%">类目</th><th class="score">热度分</th><th style="text-align:right">今日变化</th><th style="width:28px"></th></tr></thead><tbody>';
   d.categories.forEach(function (c, i) {
     html += '<tr class="cat-row" data-i="' + i + '">' +
@@ -181,7 +181,7 @@ function renderCategories(content) {
         '<td style="padding-left:26px">' + catNameHtml(s) + "</td>" +
         "<td class=\"score\">" + (s.heat > 0 ? s.heat.toFixed(2) : "—") + "</td>" +
         '<td style="text-align:right">' + (s.heat > 0 ? chip(s.delta, s.heat - s.delta) : '<span class="chip flat">未跟踪</span>') + "</td>" +
-        "<td></td></tr>";
+        '<td style="text-align:right"><button type="button" class="text-link sub-detail" data-cat="' + i + '" data-j="' + j + '">查看</button></td></tr>';
     });
   });
   html += "</tbody></table></section>";
@@ -223,11 +223,13 @@ function renderCategories(content) {
       var show = subRows[0] && subRows[0].hidden;
       content.querySelectorAll("tr.sub-row").forEach(function (r) { r.hidden = true; });
       if (show) subRows.forEach(function (r) { r.hidden = false; });
-    } else if (tr.classList.contains("sub-row")) {
-      var ci = Number(tr.getAttribute("data-cat"));
-      var si = Number(tr.getAttribute("data-j"));
-      openSub(ci, si);
     }
+  });
+  content.querySelectorAll(".sub-detail").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openSub(Number(btn.getAttribute("data-cat")), Number(btn.getAttribute("data-j")));
+    });
   });
   content.querySelectorAll(".rising-row").forEach(function (row) {
     row.addEventListener("click", function () {
