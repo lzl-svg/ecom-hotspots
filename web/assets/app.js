@@ -1,6 +1,6 @@
 "use strict";
 
-var V = "3";
+var V = "4";
 
 if (!localStorage.getItem("ecom_auth")) {
   location.replace("login.html");
@@ -49,7 +49,7 @@ function pct(delta, base) {
 }
 function chip(delta, base) {
   if (delta > 0.000001) return '<span class="chip up">▲ ' + pct(delta, base) + '</span>';
-  if (delta < -0.000001) return '<span class="chip down">▼ ' + pct(-delta, base) + '</span>';
+  if (delta < -0.000001) return '<span class="chip down">▼ ' + pct(delta, base) + '</span>';
   return '<span class="chip flat">—</span>';
 }
 function marketName(code) {
@@ -111,7 +111,10 @@ function render() {
   }
   updateSidebar();
   if (state.view === "overview") renderOverview(content);
-  else if (state.view === "categories") renderCategories(content);
+  else if (state.view === "categories") {
+    if (state.detail) content.innerHTML = renderDetail();
+    else renderCategories(content);
+  }
   else if (state.view === "keywords") renderKeywords(content);
   else if (state.view === "status") renderStatus(content);
   if (state.chart) { state.chart.dispose(); state.chart = null; }
