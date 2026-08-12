@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""把数据库历史导出成前端使用的 JSON。"""
+"""把数据库数据和 Git 中保留的历史快照导出成前端使用的 JSON。"""
 import json
+import subprocess
 from datetime import datetime, timedelta, timezone
 
 from config import EXPORT_DIR, MARKETS
@@ -16,6 +17,7 @@ from db import (
 from translations import CAT_CN, KW_CN
 
 CST = timezone(timedelta(hours=8))
+HISTORY_DAYS = 30
 
 
 def export_market(conn, market: str, dates: list[str]) -> dict:
@@ -41,13 +43,15 @@ def export_market(conn, market: str, dates: list[str]) -> dict:
         root = node["display_name"] if node else None
         if root:
             seed_roots.setdefault(c["display_name"], set()).add(root)
+
     kw_seeds = {}
     if today:
         for kw, seed in keyword_seed_rows(conn, market, today):
             kw_seeds.setdefault(kw, set()).add(seed)
 
-    kw_today = {k["keyword"]: k["heat"] for k in keyword_heat_by_date(conn, market, today)} if today else {}
-    kw_prev = {k["keyword"]: k["heat"] for k in keyword_heat_by_date(conn, market, prev)} if prev else {}
+    kw_prev = {
+        k["keyword"]: k["heat"] for k in keyword_heat_by_date(conn, market, prev)
+    } if prev else {}
 
     roots = []
     for c in sorted(level1, key=lambda x: x["catid"]):
@@ -101,26 +105,137 @@ def export_market(conn, market: str, dates: list[str]) -> dict:
     }
 
 
+def _read_json(text: str):
+    try:
+        value = json.loads(text)
+        return value if isinstance(value, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def git_snapshots(market: str, limit: int = 80) -> list[dict]:
+    """读取 Git 历史中的网页快照；失败时安全退化为仅使用当前数据。"""
+    rel_path = f"web/data/{market}.json"
+    try:
+        log = subprocess.run(
+            ["git", "log", f"--max-count={limit}", "--format=%H", "--", rel_path],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
+
+    snapshots = []
+    seen_dates = set()
+    for sha in log.stdout.splitlines():
+        try:
+            shown = subprocess.run(
+                ["git", "show", f"{sha}:{rel_path}"],
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        snapshot = _read_json(shown.stdout)
+        if not snapshot or snapshot.get("market") != market:
+            continue
+        snapshot_dates = snapshot.get("dates") or []
+        # 新提交优先；同一天多次采集只保留最新一份。
+        fresh_dates = [d for d in snapshot_dates if d not in seen_dates]
+        if fresh_dates:
+            snapshots.append(snapshot)
+            seen_dates.update(fresh_dates)
+        if len(seen_dates) >= HISTORY_DAYS:
+            break
+    return snapshots
+
+
+def _store_category(history: dict, category: dict):
+    key = str(category.get("catid"))
+    dates = category.get("dates") or []
+    series = category.get("series") or []
+    values = history.setdefault(key, {})
+    for date, heat in zip(dates, series):
+        values.setdefault(date, float(heat or 0))
+
+
+def merge_git_history(current: dict, snapshots: list[dict]) -> dict:
+    """把当前采集与旧 JSON 合并，并重新计算类目和关键词变化。"""
+    all_snapshots = [current, *snapshots]
+    all_dates = set()
+    root_history = {}
+    sub_history = {}
+    keyword_history = {}
+
+    for snapshot in all_snapshots:
+        dates = snapshot.get("dates") or []
+        all_dates.update(dates)
+        latest_date = dates[0] if dates else ""
+        for root in snapshot.get("categories") or []:
+            _store_category(root_history, root)
+            for sub in root.get("subs") or []:
+                _store_category(sub_history, sub)
+        if latest_date:
+            for keyword in snapshot.get("keywords") or []:
+                keyword_history.setdefault(keyword.get("keyword", ""), {}).setdefault(
+                    latest_date, float(keyword.get("heat") or 0)
+                )
+
+    dates_desc = sorted(all_dates, reverse=True)[:HISTORY_DAYS]
+    dates_asc = list(reversed(dates_desc))
+    today = dates_desc[0] if dates_desc else ""
+    previous = dates_desc[1] if len(dates_desc) > 1 else ""
+    current["dates"] = dates_desc
+
+    def apply(category: dict, history: dict):
+        values = history.get(str(category.get("catid")), {})
+        current_heat = float(values.get(today, category.get("heat") or 0))
+        previous_heat = values.get(previous) if previous else None
+        category["heat"] = round(current_heat, 3)
+        category["delta"] = round(current_heat - previous_heat, 3) if previous_heat is not None else 0
+        category["dates"] = dates_asc
+        category["series"] = [round(float(values.get(d, 0)), 3) for d in dates_asc]
+
+    for root in current.get("categories") or []:
+        apply(root, root_history)
+        for sub in root.get("subs") or []:
+            apply(sub, sub_history)
+    current["categories"].sort(key=lambda x: x["heat"], reverse=True)
+
+    for keyword in current.get("keywords") or []:
+        old_heat = keyword_history.get(keyword.get("keyword", ""), {}).get(previous, 0)
+        keyword["delta"] = round(float(keyword.get("heat") or 0) - old_heat, 3)
+    return current
+
+
 def main():
     conn = connect()
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     meta_markets = []
-    for code, m in MARKETS.items():
-        dates = daily_dates(conn, code, days=30)
-        data = export_market(conn, code, dates)
+    for code, market_config in MARKETS.items():
+        db_dates = daily_dates(conn, code, days=HISTORY_DAYS)
+        data = export_market(conn, code, db_dates)
+        data = merge_git_history(data, git_snapshots(code))
         path = EXPORT_DIR / f"{code}.json"
         path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         meta_markets.append({
             "code": code,
-            "name": m["name"],
-            "label": m["label"],
-            "currency": m["currency"],
+            "name": market_config["name"],
+            "label": market_config["label"],
+            "currency": market_config["currency"],
             "updated_at": data["updated_at"],
             "n_categories": len(data["categories"]),
             "n_keywords": len(data["keywords"]),
             "history_days": len(data["dates"]),
         })
-        print(f"[{code}] 导出 {path.name}: 类目 {len(data['categories'])} / 关键词 {len(data['keywords'])} / 历史 {len(dates)} 天")
+        print(
+            f"[{code}] 导出 {path.name}: 类目 {len(data['categories'])} / "
+            f"关键词 {len(data['keywords'])} / 历史 {len(data['dates'])} 天"
+        )
 
     meta = {
         "site": "电商热点台",
