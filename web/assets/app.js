@@ -1,6 +1,6 @@
 "use strict";
 
-var V = "4";
+var V = "6";
 
 if (!localStorage.getItem("ecom_auth")) {
   location.replace("login.html");
@@ -51,6 +51,18 @@ function chip(delta, base) {
   if (delta > 0.000001) return '<span class="chip up">▲ ' + pct(delta, base) + '</span>';
   if (delta < -0.000001) return '<span class="chip down">▼ ' + pct(delta, base) + '</span>';
   return '<span class="chip flat">—</span>';
+}
+function trackingChip(item) {
+  if (item.tracking_status === "tracked") {
+    var days = item.comparison_days || 1;
+    var label = chip(item.delta, item.heat - item.delta);
+    return days > 1
+      ? label.replace('<span ', '<span title="较 ' + days + ' 天前的上次有效采集" ')
+      : label;
+  }
+  if (item.tracking_status === "warming_up") return '<span class="chip flat">等待对比</span>';
+  if (item.tracking_status === "not_today") return '<span class="chip flat">今日轮休</span>';
+  return '<span class="chip flat">尚无数据</span>';
 }
 function marketName(code) {
   if (!state.meta) return code;
@@ -180,10 +192,11 @@ function renderCategories(content) {
       "<td style=\"text-align:right\">" + chip(c.delta, c.heat - c.delta) + "</td>" +
       '<td style="text-align:right;color:#c0bec2">▾</td></tr>';
     c.subs.forEach(function (s, j) {
+      var hasHistory = (s.sample_count || 0) > 0;
       html += '<tr class="sub-row" data-cat="' + i + '" data-j="' + j + '" hidden>' +
         '<td style="padding-left:26px">' + catNameHtml(s) + "</td>" +
-        "<td class=\"score\">" + (s.heat > 0 ? s.heat.toFixed(2) : "—") + "</td>" +
-        '<td style="text-align:right">' + (s.heat > 0 ? chip(s.delta, s.heat - s.delta) : '<span class="chip flat">未跟踪</span>') + "</td>" +
+        "<td class=\"score\">" + (hasHistory ? s.heat.toFixed(2) : "—") + "</td>" +
+        '<td style="text-align:right">' + trackingChip(s) + "</td>" +
         '<td style="text-align:right"><button type="button" class="text-link sub-detail" data-cat="' + i + '" data-j="' + j + '">查看</button></td></tr>';
     });
   });
@@ -193,16 +206,31 @@ function renderCategories(content) {
   var rising = [];
   d.categories.forEach(function (c, ci) {
     c.subs.forEach(function (s, si) {
-      if (s.heat > 0 && s.delta > 0.000001) {
-        rising.push({ ci: ci, si: si, delta: s.delta, name: s.name, cn: s.cn });
+      if (s.tracking_status === "tracked" && s.comparable && s.delta > 0.000001) {
+        var previousHeat = s.heat - s.delta;
+        if (previousHeat > 0) {
+          var comparisonDays = Math.max(1, s.comparison_days || 1);
+          var periodPct = (s.delta / previousHeat) * 100;
+          var dailyPct = (Math.pow(s.heat / previousHeat, 1 / comparisonDays) - 1) * 100;
+          rising.push({
+            ci: ci,
+            si: si,
+            delta: s.delta,
+            pct: periodPct,
+            dailyPct: dailyPct,
+            comparisonDays: comparisonDays,
+            name: s.name,
+            cn: s.cn
+          });
+        }
       }
     });
   });
-  rising.sort(function (a, b) { return b.delta - a.delta; });
+  rising.sort(function (a, b) { return b.dailyPct - a.dailyPct; });
   var risingHtml = rising.slice(0, 8).map(function (r) {
-    return '<div class="kw-row rising-row" data-ci="' + r.ci + '" data-si="' + r.si + '" title="点击查看详情">' +
+    return '<div class="kw-row rising-row" data-ci="' + r.ci + '" data-si="' + r.si + '" title="本次较上次采集上涨 ' + r.pct.toFixed(1) + '%，间隔 ' + r.comparisonDays + ' 天">' +
       '<span class="kw-name">' + (r.cn ? esc(r.cn) + "<small>" + esc(r.name) + "</small>" : esc(r.name)) + "</span>" +
-      '<span class="chip up">▲ ' + r.delta.toFixed(2) + "</span></div>";
+      '<span class="chip up">▲ +' + r.dailyPct.toFixed(1) + "%/日</span></div>";
   }).join("") || '<div class="empty">暂无，数据积累几天后自动出现</div>';
 
   var kws = d.keywords.slice(0, 8).map(function (k, i) {
@@ -211,7 +239,7 @@ function renderCategories(content) {
       chip(k.delta, k.heat - k.delta) + "</div>";
   }).join("");
   html += '<div class="right-col">' +
-    '<section class="panel"><div class="panel-head"><div><div class="panel-title">飙升子类目</div><div class="panel-sub">今日涨幅最高，点击查看曲线</div></div></div>' + risingHtml + "</section>" +
+    '<section class="panel"><div class="panel-head"><div><div class="panel-title">飙升子类目</div><div class="panel-sub">按日均涨幅排序，仅统计本次已采集且至少有两次有效数据的子类目</div></div></div>' + risingHtml + "</section>" +
     '<section class="panel"><div class="panel-head"><div><div class="panel-title">热搜词速览</div></div><button class="text-link" id="goto-kw" type="button">查看全部 →</button></div>' +
     (kws || '<div class="empty">暂无</div>') + "</section></div></div>";
   content.innerHTML = html;
@@ -252,7 +280,11 @@ function openSub(ci, si) {
     series: sub.series,
     hot_keywords: sub.hot_keywords,
     heat: sub.heat,
-    delta: sub.delta
+    delta: sub.delta,
+    tracking_status: sub.tracking_status,
+    sample_count: sub.sample_count || 0,
+    last_tracked_date: sub.last_tracked_date || "",
+    comparison_days: sub.comparison_days || 0
   };
   render();
 }
@@ -260,18 +292,33 @@ function openSub(ci, si) {
 function renderDetail() {
   var d = state.data;
   var det = state.detail;
+  var availableDays = det.dates.length;
+  var observedDays = det.series.filter(function (v) { return Number.isFinite(v); }).length;
+  var sampleNote = det.tracking_status === "not_today"
+    ? '<div class="panel-sub" style="margin:8px 0 0">该子类目今天处于轮换休息日，当前显示最近一次采集结果（' + esc(det.last_tracked_date) + '）。</div>'
+    : det.tracking_status === "warming_up"
+      ? '<div class="panel-sub" style="margin:8px 0 0">已完成首次采集，获得第二次有效数据后才会计算涨跌。</div>'
+      : det.tracking_status === "never"
+        ? '<div class="panel-sub" style="margin:8px 0 0">尚无采集记录，轮换到该子类目后会开始显示曲线。</div>'
+        : '';
+  var historyNote = availableDays < 30
+    ? '<div class="panel-sub" style="margin:8px 0 0">当前仅积累 <b>' + availableDays +
+      ' 天</b>历史；因此“近 7 天”和“近 30 天”目前可能显示相同曲线，数据会每天继续累积。</div>'
+    : '';
   var html = '<button class="back-link" id="back-btn">← 返回类目列表</button>';
   html += '<section class="panel"><div class="panel-head"><div>' +
     '<div class="panel-title">类目趋势</div>' +
     '<div class="crumb">' + esc(marketName(state.market)) + '<span class="sep">/</span>' + esc(det.name) + "</div></div>" +
     '<div class="seg" role="group" aria-label="时间范围">' +
-    '<button type="button" data-range="7d" ' + (state.range === "7d" ? 'class="active" aria-pressed="true"' : 'aria-pressed="false"') + '>近 7 天</button>' +
-    '<button type="button" data-range="30d" ' + (state.range === "30d" ? 'class="active" aria-pressed="true"' : 'aria-pressed="false"') + '>近 30 天</button>' +
+    '<button type="button" data-range="7d" title="最多显示最近 7 个采集日" ' + (state.range === "7d" ? 'class="active" aria-pressed="true"' : 'aria-pressed="false"') + '>近 7 天</button>' +
+    '<button type="button" data-range="30d" title="最多显示最近 30 个采集日" ' + (state.range === "30d" ? 'class="active" aria-pressed="true"' : 'aria-pressed="false"') + '>近 30 天</button>' +
     "</div></div>" +
     '<div id="chart" role="img" aria-label="类目热度分曲线"></div>' +
+    historyNote +
+    sampleNote +
     '<div class="detail-row">' +
-    "<span>热度分 <b>" + det.heat.toFixed(2) + "</b> " + chip(det.delta, det.heat - det.delta) + "</span>" +
-    "<span>历史 <b>" + det.dates.length + "</b> 天</span></div>" +
+    "<span>热度分 <b>" + det.heat.toFixed(2) + "</b> " + trackingChip(det) + "</span>" +
+    "<span>历史 <b>" + availableDays + "</b> 天 · 有效采集 <b>" + observedDays + "</b> 天</span></div>" +
     '<div class="panel-sub" style="margin-top:12px">相关热搜词</div>' +
     '<div class="kw-tags">' +
     (det.hot_keywords && det.hot_keywords.length
@@ -288,7 +335,7 @@ function renderChart() {
   var chartEl = $("#chart");
   if (!chartEl) return;
   state.chart = echarts.init(chartEl);
-  var n = state.range === "7d" ? Math.min(7, det.dates.length) : det.dates.length;
+  var n = state.range === "7d" ? Math.min(7, det.dates.length) : Math.min(30, det.dates.length);
   var dates = det.dates.slice(-n);
   var series = det.series.slice(-n);
   state.chart.setOption({
@@ -299,6 +346,7 @@ function renderChart() {
     series: [{
       type: "line",
       data: series,
+      connectNulls: false,
       smooth: true,
       symbol: "circle",
       symbolSize: 5,
