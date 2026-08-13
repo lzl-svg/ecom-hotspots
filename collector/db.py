@@ -115,7 +115,9 @@ def daily_dates(conn: sqlite3.Connection, market: str, days: int = 30) -> list[s
     return [r[0] for r in cur.fetchall()]
 
 
-def category_series(conn: sqlite3.Connection, market: str, catid: int, dates: list[str]) -> list[float]:
+def category_series(
+    conn: sqlite3.Connection, market: str, catid: int, dates: list[str]
+) -> list[float | None]:
     if not dates:
         return []
     q = ",".join("?" * len(dates))
@@ -124,7 +126,39 @@ def category_series(conn: sqlite3.Connection, market: str, catid: int, dates: li
         (market, catid, *dates),
     )
     m = dict(cur.fetchall())
-    return [m.get(d) or 0.0 for d in dates]
+    # 没有采集到不等于热度为 0。子类目只会按配置进行下钻，某天未下钻时
+    # 应导出为空点，否则折线会出现虚假的暴跌到 0 和次日暴涨。
+    return [float(m[d]) if d in m and m[d] is not None else None for d in dates]
+
+
+def rising_category_ids(
+    conn: sqlite3.Connection,
+    market: str,
+    since_date: str,
+    min_growth: float = 0.10,
+    limit: int = 30,
+) -> set[int]:
+    """返回近期曾明显上涨的类目，用于临时提高采集频率。"""
+    cur = conn.execute(
+        """SELECT catid, date, heat FROM category_daily
+           WHERE market=? AND date>=? AND heat>0
+           ORDER BY catid, date DESC""",
+        (market, since_date),
+    )
+    histories = {}
+    for catid, date, heat in cur.fetchall():
+        histories.setdefault(catid, []).append((date, float(heat)))
+
+    candidates = []
+    for catid, values in histories.items():
+        best_growth = 0.0
+        for newer, older in zip(values, values[1:]):
+            if older[1] > 0:
+                best_growth = max(best_growth, (newer[1] - older[1]) / older[1])
+        if best_growth >= min_growth:
+            candidates.append((catid, best_growth))
+    candidates.sort(key=lambda item: item[1], reverse=True)
+    return {catid for catid, _ in candidates[:limit]}
 
 
 def keyword_heat_by_date(conn: sqlite3.Connection, market: str, date: str, limit: int = 120) -> list[dict]:
