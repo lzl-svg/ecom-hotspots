@@ -63,20 +63,32 @@ def export_market(conn, market: str, dates: list[str]) -> dict:
                 "catid": s["catid"],
                 "name": s["display_name"],
                 "cn": CAT_CN.get(market, {}).get(s["display_name"], ""),
-                "heat": round(s_series_desc[0], 3) if s_series_desc else 0,
-                "delta": round(s_series_desc[0] - s_series_desc[1], 3) if len(s_series_desc) > 1 else 0,
+                "heat": round(s_series_desc[0], 3) if s_series_desc and s_series_desc[0] is not None else 0,
+                "delta": (
+                    round(s_series_desc[0] - s_series_desc[1], 3)
+                    if len(s_series_desc) > 1
+                    and s_series_desc[0] is not None
+                    and s_series_desc[1] is not None
+                    else 0
+                ),
                 "dates": asc,
-                "series": [round(v, 3) for v in reversed(s_series_desc)],
+                "series": [round(v, 3) if v is not None else None for v in reversed(s_series_desc)],
                 "hot_keywords": seed_keywords(conn, market, today, s["display_name"]) if today else [],
             })
         roots.append({
             "catid": c["catid"],
             "name": c["display_name"],
             "cn": CAT_CN.get(market, {}).get(c["display_name"], ""),
-            "heat": round(series_desc[0], 3) if series_desc else 0,
-            "delta": round(series_desc[0] - series_desc[1], 3) if len(series_desc) > 1 else 0,
+            "heat": round(series_desc[0], 3) if series_desc and series_desc[0] is not None else 0,
+            "delta": (
+                round(series_desc[0] - series_desc[1], 3)
+                if len(series_desc) > 1
+                and series_desc[0] is not None
+                and series_desc[1] is not None
+                else 0
+            ),
             "dates": asc,
-            "series": [round(v, 3) for v in reversed(series_desc)],
+            "series": [round(v, 3) if v is not None else None for v in reversed(series_desc)],
             "hot_keywords": seed_keywords(conn, market, today, c["display_name"]) if today else [],
             "subs": subs,
         })
@@ -160,7 +172,11 @@ def _store_category(history: dict, category: dict):
     series = category.get("series") or []
     values = history.setdefault(key, {})
     for date, heat in zip(dates, series):
-        values.setdefault(date, float(heat or 0))
+        # 旧导出曾用 0 表示“当天没有采集”。历史合并时忽略这类值，
+        # 防止它们继续污染 7/30 天曲线和涨跌幅。
+        if heat is None or float(heat) <= 0:
+            continue
+        values.setdefault(date, float(heat))
 
 
 def merge_git_history(current: dict, snapshots: list[dict]) -> dict:
@@ -193,12 +209,41 @@ def merge_git_history(current: dict, snapshots: list[dict]) -> dict:
 
     def apply(category: dict, history: dict):
         values = history.get(str(category.get("catid")), {})
-        current_heat = float(values.get(today, category.get("heat") or 0))
-        previous_heat = values.get(previous) if previous else None
-        category["heat"] = round(current_heat, 3)
-        category["delta"] = round(current_heat - previous_heat, 3) if previous_heat is not None else 0
+        observed_dates = [d for d in dates_desc if d in values]
+        latest_date = observed_dates[0] if observed_dates else ""
+        latest_heat = values.get(latest_date) if latest_date else None
+        previous_date = observed_dates[1] if len(observed_dates) > 1 else ""
+        previous_heat = values.get(previous_date) if previous_date else None
+        tracked_today = latest_date == today
+        comparable = tracked_today and latest_heat is not None and previous_heat is not None
+        comparison_days = (
+            (datetime.fromisoformat(latest_date) - datetime.fromisoformat(previous_date)).days
+            if comparable
+            else 0
+        )
+        category["heat"] = round(latest_heat, 3) if latest_heat is not None else 0
+        category["delta"] = (
+            round(latest_heat - previous_heat, 3)
+            if comparable
+            else 0
+        )
         category["dates"] = dates_asc
-        category["series"] = [round(float(values.get(d, 0)), 3) for d in dates_asc]
+        category["series"] = [
+            round(float(values[d]), 3) if d in values else None for d in dates_asc
+        ]
+        category["sample_count"] = len(observed_dates)
+        category["last_tracked_date"] = latest_date
+        category["previous_tracked_date"] = previous_date
+        category["comparison_days"] = comparison_days
+        category["comparable"] = comparable
+        if not observed_dates:
+            category["tracking_status"] = "never"
+        elif not tracked_today:
+            category["tracking_status"] = "not_today"
+        elif not comparable:
+            category["tracking_status"] = "warming_up"
+        else:
+            category["tracking_status"] = "tracked"
 
     for root in current.get("categories") or []:
         apply(root, root_history)
