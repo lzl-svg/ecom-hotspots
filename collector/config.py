@@ -20,17 +20,22 @@ FIXED_SEEDS = {
     "vn": ["ốp lưng điện thoại", "áo khoác", "giày thể thao", "túi xách nữ", "mỹ phẩm"],
 }
 
-# 取热度前 N 个一级类目做下钻
-TOP_LEVEL2 = 5
+# 热度最高的 N 个一级类目：其全部二级类目每天采集
+DAILY_LEVEL1_COUNT = 8
 
-# 每个一级类目最多取多少个二级类目做种子
-SUBS_PER_CAT = 10
+# 其余一级类目下的二级类目分组轮换，保证每个子类目至少每 7 天采集一次
+SUBCATEGORY_ROTATION_DAYS = 7
+
+# 轮换类目近期单次涨幅达到该值时，临时升级为每日采集
+PROMOTION_MIN_GROWTH = 0.10
+PROMOTION_LOOKBACK_DAYS = 14
+PROMOTION_LIMIT = 30
 
 # 每个种子取多少个联想词
 HINT_LIMIT = 40
 
-# 请求间隔（秒），放慢节奏避免触发反爬
-REQUEST_DELAY = (0.7, 1.5)
+# 请求间隔（秒）。扩展子类目覆盖后仍保留抖动，并控制每日任务耗时。
+REQUEST_DELAY = (0.45, 0.9)
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
