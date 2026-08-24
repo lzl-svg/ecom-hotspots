@@ -2,10 +2,6 @@
 
 var V = "6";
 
-if (!localStorage.getItem("ecom_auth")) {
-  location.replace("login.html");
-}
-
 var state = {
   meta: null,
   market: null,
@@ -428,28 +424,6 @@ function init() {
   document.querySelectorAll(".nav-item").forEach(function (b) {
     b.addEventListener("click", function () { setView(b.getAttribute("data-view")); });
   });
-
-  var logoutBtn = document.getElementById("logout-btn");
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", function () {
-      localStorage.removeItem("ecom_auth");
-      location.href = "login.html";
-    });
-  }
-
-  var settingsBtn = document.getElementById("settings-btn");
-  var settingsMenu = document.getElementById("settings-menu");
-  if (settingsBtn && settingsMenu) {
-    settingsBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      settingsMenu.hidden = !settingsMenu.hidden;
-    });
-    document.addEventListener("click", function (e) {
-      if (!e.target.closest("#settings-menu") && !e.target.closest("#settings-btn")) {
-        settingsMenu.hidden = true;
-      }
-    });
-  }
 
   $("#content").addEventListener("click", function (e) {
     var rangeBtn = e.target.closest("button[data-range]");
