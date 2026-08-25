@@ -36,6 +36,7 @@ jobs:
         run: |
           python collector/run.py
           python collector/export.py
+          python collector/public_markets.py
 
       - name: 提交新数据
         run: |
