@@ -3,43 +3,57 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>电商热点台 · Shopee 情报中心</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <meta name="description" content="Shopee、Ozon 与 Wildberries 全市场大类和小类目趋势观察">
+  <title>类目雷达 · 公开市场观察</title>
+  <link rel="stylesheet" href="assets/style.css?v=9">
 </head>
 <body>
-  <div id="app" class="app">
+  <div id="app" class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">✦</div>
+        <div class="brand-mark" aria-hidden="true">R</div>
         <div>
-          <div class="brand-name">电商热点台</div>
-          <div class="brand-sub">Shopee 情报中心</div>
+          <div class="brand-name">类目雷达</div>
+          <div class="brand-sub">公开市场观察</div>
         </div>
       </div>
-      <button class="nav-item active" type="button" data-view="overview">总览</button>
-      <button class="nav-item" type="button" data-view="categories">类目热点</button>
-      <button class="nav-item" type="button" data-view="keywords">热搜词</button>
-      <button class="nav-item" type="button" data-view="status">数据状态</button>
-      <div class="sidebar-foot" id="side-status">正在加载…</div>
+
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-item active" type="button" data-view="overview">
+          <span class="nav-icon">◫</span><span>市场总览</span>
+        </button>
+        <button class="nav-item" type="button" data-view="core">
+          <span class="nav-icon">◎</span><span>核心类目日榜</span>
+        </button>
+        <button class="nav-item" type="button" data-view="weekly">
+          <span class="nav-icon">⌁</span><span>全市场周榜</span>
+        </button>
+        <button class="nav-item" type="button" data-view="method">
+          <span class="nav-icon">i</span><span>口径与状态</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-note">
+        <span class="live-dot"></span>
+        <div><b id="side-market">正在加载</b><small id="side-status">读取市场数据…</small></div>
+      </div>
     </aside>
 
-    <div class="main">
+    <main class="main">
       <header class="topbar">
-        <div class="page-title" id="page-title">总览</div>
-        <div class="topbar-right">
-          <div class="seg" role="group" aria-label="平台选择">
-            <button type="button" class="active" aria-pressed="true">Shopee</button>
-            <button type="button" class="soon" disabled>Amazon</button>
-            <button type="button" class="soon" disabled>Ozon</button>
-            <button type="button" class="soon" disabled>WB</button>
-          </div>
-          <div class="seg" id="market-seg" role="group" aria-label="市场选择"></div>
+        <div>
+          <div class="eyebrow">PUBLIC MARKET CATEGORY INTELLIGENCE</div>
+          <h1 id="page-title">市场总览</h1>
         </div>
+        <div class="market-switch" id="market-switch" role="group" aria-label="市场选择"></div>
       </header>
-      <div class="content" id="content"></div>
-    </div>
+      <div class="content" id="content">
+        <div class="loading-card">正在加载市场数据…</div>
+      </div>
+    </main>
   </div>
-  <script src="assets/echarts.min.js?v=3"></script>
-  <script src="assets/app.js?v=3"></script>
+
+  <script src="assets/echarts.min.js?v=7"></script>
+  <script src="assets/app.js?v=9"></script>
 </body>
 </html>
