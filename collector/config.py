@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """全局配置：市场、种子词、路径。"""
+import json
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -12,6 +13,33 @@ MARKETS = {
     "my": {"name": "马来", "label": "马来站", "domain": "shopee.com.my", "currency": "MYR"},
     "vn": {"name": "越南", "label": "越南站", "domain": "shopee.vn", "currency": "VND"},
 }
+
+# 固定监控的小类目默认值。网页选择器保存后，会优先读取 watchlist.json。
+DEFAULT_CORE_SUBCATEGORY_IDS = {
+    "id": {11044245, 11043573, 11043032, 11043959, 11042643, 11042901},
+    "my": {11000691, 11133423, 11001537, 11000989, 11000746, 11000711},
+    "vn": {11036102, 11036280, 11036479, 11035742, 11036526, 11035899},
+    "ozon": set(),
+    "wb": set(),
+}
+
+WATCHLIST_MARKETS = ("id", "my", "vn", "ozon", "wb")
+
+
+def load_core_subcategory_ids():
+    """读取网页保存的固定采集清单，失败时使用演示默认值。"""
+    path = BASE_DIR / "collector" / "watchlist.json"
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        return {
+            market: {int(catid) for catid in saved.get(market, [])}
+            for market in WATCHLIST_MARKETS
+        }
+    except (OSError, ValueError, TypeError):
+        return {market: set(catids) for market, catids in DEFAULT_CORE_SUBCATEGORY_IDS.items()}
+
+
+CORE_SUBCATEGORY_IDS = load_core_subcategory_ids()
 
 # 每个市场固定的热门种子词（类目名之外补充，覆盖真实搜索习惯）
 FIXED_SEEDS = {
